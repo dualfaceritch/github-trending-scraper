@@ -2,6 +2,39 @@ import asyncio
 from playwright.async_api import async_playwright
 import  pandas as pd
 
+def clean_repos(repos: list[dict]) -> list[dict]:
+    """ Normalize raw scraped data into a consistent, analyst-ready shape."""
+    cleaned = []
+    
+    for r in repos:
+        # 'morluto / rea' --> 'morluto/rea'
+        name = (r["name"] or "").replace(" ","")
+
+        # "225,233" -> 225223
+        stars = int(r['stars'].replace(",", "")) if r["stars"] else None
+        
+        description = r["description"] or ""
+
+        # "41,187 stars today" --> 41187
+        if r["stars_today"]:
+            stars_today = int(
+                r["stars_today"].replace(",", "").replace("stars today", "").strip()
+        )
+        else:
+            stars_today = None
+
+        # None --> "Unknown"
+        language = r['language'] or "Unknown"
+
+        cleaned.append({
+            "name": name,
+            "urls": r['url'],
+            "description": description,
+            "language": language,
+            "star": stars,
+            "stars_today": stars_today,
+            })
+    return cleaned
 
 async def main():
     async with async_playwright() as p:
@@ -48,8 +81,12 @@ async def main():
 
         await browser.close()   
     
-        # save to csv (outside the browser context)
-        df = pd.DataFrame(repos)
+        # Clean raw data before saving
+        cleaned = clean_repos(repos)
+
+        df = pd.DataFrame(cleaned)
+
+        df.to_csv("trending.csv", index=False)
         
         preview = df.copy()
         preview['description'] = preview['description'].str.slice(0, 50) + "..."
