@@ -1,6 +1,8 @@
 import asyncio
 from playwright.async_api import async_playwright
 import  pandas as pd
+import argparse
+
 
 def clean_repos(repos: list[dict]) -> list[dict]:
     """ Normalize raw scraped data into a consistent, analyst-ready shape."""
@@ -28,17 +30,42 @@ def clean_repos(repos: list[dict]) -> list[dict]:
 
         cleaned.append({
             "name": name,
-            "urls": r['url'],
+            "url": r['url'],
             "description": description,
             "language": language,
-            "star": stars,
+            "stars": stars,
             "stars_today": stars_today,
             })
     return cleaned
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Scrape Github Trending and save the result to CSV."
+    )
+    parser.add_argument(
+        "-l", "--limit",
+        type=int,
+        default=None,
+        help="Only scrape the top N repos (default: all).",
+
+    )
+
+    parser.add_argument(
+        "-o", "--output",
+        type=str,
+        default="trending.csv",
+        help="Output CSV path (default: trending.csv).",
+    )
+    
+    return parser.parse_args()
+    
+
 async def main():
+    args = parse_args()
+
+
     async with async_playwright() as p:
-        browser = await p.firefox.launch(headless=True)
+        browser = await p.chromium.launch(headless=True)
         page = await browser.new_page()
 
         print("opening Github Trending...")
@@ -81,19 +108,22 @@ async def main():
 
         await browser.close()   
     
-        # Clean raw data before saving
-        cleaned = clean_repos(repos)
+    # Clean raw data before saving
+    cleaned = clean_repos(repos)
+    if args.limit is not None:
+        cleaned = cleaned[:args.limit]
 
-        df = pd.DataFrame(cleaned)
+    df = pd.DataFrame(cleaned)
 
-        df.to_csv("trending.csv", index=False)
+    df.to_csv(args.output, index=False)
         
-        preview = df.copy()
-        preview['description'] = preview['description'].str.slice(0, 50) + "..."
-        print(preview.to_string(index=False))
+    preview = df.copy()
+    preview['description'] = preview['description'].str.slice(0, 50) + "..."
+    print(preview.to_string(index=False))
 
-        print(f"saved {len(repos)} repos to trending.csv\n")
+    print(f"saved {len(df)} repos to {args.output}")
         
 
-asyncio.run(main())
+if __name__=="__main__":
+    asyncio.run(main())
 
